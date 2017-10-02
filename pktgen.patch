@@ -1,0 +1,909 @@
+--- pktgen-3.4.2/app/cli-functions.c
++++ pktgen-3.4.2/app/cli-functions.c
+@@ -162,6 +162,10 @@
+ 	{ 80, "range %P mpls entry %h" },
+ 	{ 85, "range %P qinq index %d %d" },
+ 	{ 90, "range %P gre key %d" },
++	{ 160, "range %P cos "SMMI" %d" },
++	{ 161, "range %P cos %d %d %d %d" },
++	{ 170, "range %P tos "SMMI" %d" },
++	{ 171, "range %P tos %d %d %d %d" },
+     { -1, NULL }
+ };
+ 
+@@ -190,6 +194,9 @@
+ 	"range <portlist> mpls entry <hex-value>       - Set MPLS entry value",
+ 	"range <portlist> qinq index <val1> <val2>     - Set QinQ index values",
+ 	"range <portlist> gre key <value>              - Set GRE key value",
++	"range <portlist> cos <SMMI> <value>           - Set cos value",
++	"range <portlist> tos <SMMI> <value>           - Set tos value",
++
+ 	CLI_HELP_PAUSE,
+ 	NULL
+ };
+@@ -341,6 +348,30 @@
+ 		case 90:
+ 			foreach_port(portlist,
+ 				range_set_gre_key(info, strtoul(what, NULL, 10)) );
++			break;
++		case 160:
++			foreach_port(portlist,
++				range_set_cos_id(info, argv[3], atoi(what)) );
++			break;
++		case 161:
++			foreach_port(portlist,
++				range_set_cos_id(info, (char *)(uintptr_t)"start", atoi(argv[3]));
++				range_set_cos_id(info, (char *)(uintptr_t)"min", atoi(argv[4]));
++		 		range_set_cos_id(info, (char *)(uintptr_t)"max", atoi(argv[5]));
++				range_set_cos_id(info, (char *)(uintptr_t)"inc", atoi(argv[6]));
++				);
++			break;
++		case 170:
++			foreach_port(portlist,
++				range_set_tos_id(info, argv[3], atoi(what)) );
++			break;
++		case 171:
++			foreach_port(portlist,
++				range_set_tos_id(info, (char *)(uintptr_t)"start", atoi(argv[3]));
++				range_set_tos_id(info, (char *)(uintptr_t)"min", atoi(argv[4]));
++				range_set_tos_id(info, (char *)(uintptr_t)"max", atoi(argv[5]));
++				range_set_tos_id(info, (char *)(uintptr_t)"inc", atoi(argv[6]))
++				);
+ 			break;
+ 		default:
+ 			return -1;
+@@ -376,6 +407,8 @@
+ 	{ 40, "set ports_per_page %d" },
+ 	{ 50, "set %P qinqids %d %d" },
+ 	{ 60, "set %P rnd %d %d %s" },
++	{ 70, "set %P cos %d" },
++	{ 80, "set %P tos %d" },
+     { -1, NULL }
+ };
+ 
+@@ -417,6 +450,8 @@
+ 	"                                       1: bit will be 1",
+ 	"                                       .: bit will be ignored (original value is retained)",
+ 	"                                       X: bit will get random value",
++	"set <portlist> cos	<value>            - Set the CoS value for the portlist",
++	"set <portlist> tos	<value>            - Set the ToS value for the portlist",
+ 	CLI_HELP_PAUSE,
+ 	NULL
+ };
+@@ -515,6 +550,14 @@
+ 			id2 = strtol(argv[4], NULL, 0);
+ 			foreach_port(portlist, single_set_qinqids(info, id1, id2));
+ 			break;
++		case 70:
++			id1 = strtol(argv[3], NULL, 0);
++			foreach_port(portlist, single_set_cos(info, id1));
++			break;
++		case 80:
++			id1 = strtol(argv[3], NULL, 0);
++			foreach_port(portlist, single_set_tos(info, id1));
++			break;				
+ 		default:
+ 			return -1;
+ 	}
+@@ -943,7 +986,7 @@
+  * RETURNS: N/A
+  *
+  * SEE ALSO:
+- * 	"%|seq|sequence %d %P %m %m %4 %4 %d %d %|ipv4|ipv6 %|udp|tcp|icmp %d %d %d"
++ * 	"%|seq|sequence %d %P %m %m %4 %4 %d %d %|ipv4|ipv6 %|udp|tcp|icmp %d %d %d %d %d"
+  */
+ 
+ static int
+@@ -965,7 +1008,7 @@
+ 	if (seqnum >= NUM_SEQ_PKTS)
+ 		return -1;
+ 
+-	teid = (argc == 11)? strtoul(argv[13], NULL, 10) : 0;
++	teid = (argc == 13)? strtoul(argv[16], NULL, 10) : 0;
+ 	p = strchr(argv[5], '/'); /* remove subnet if found */
+ 	if (p)
+ 		*p = '\0';
+@@ -987,8 +1030,9 @@
+ 				    &dst, &src,
+ 				    atoi(argv[7]), atoi(argv[8]),
+ 					eth[3], proto[0],
+-				    atoi(argv[11]), atoi(argv[12]),
+-				    teid) );
++					atoi(argv[11]), atoi(argv[12]),
++					teid,
++					atoi(argv[13]), atoi(argv[14])) );
+ 
+ 	pktgen_update_display();
+ 	return 0;
+@@ -1026,7 +1070,7 @@
+ 	if (seqnum >= NUM_SEQ_PKTS)
+ 		return -1;
+ 
+-	teid = (argc == 23)? strtoul(argv[22], NULL, 10) : 0;
++	teid = (argc == 25)? strtoul(argv[24], NULL, 10) : 0;
+ 	p = strchr(argv[8], '/'); /* remove subnet if found */
+ 	if (p)
+ 		*p = '\0';
+@@ -1048,24 +1092,25 @@
+ 				    &dst, &src,
+ 				    atoi(argv[12]), atoi(argv[14]), eth[3],
+ 				    proto[0],
+-				    atoi(argv[18]), atoi(argv[20]),
+-				    teid) );
++					atoi(argv[18]), atoi(argv[20]),
++					teid,
++					atoi(argv[23]), atoi(argv[24])) );
+ 
+ 	pktgen_update_display();
+ 	return 0;
+ }
+ 
+ static struct cli_map seq_map[] = {
+-	{ 10, "%|seq|sequence %d %P %m %m %4 %4 %d %d %|ipv4|ipv6 %|udp|tcp|icmp %d %d" },
+-	{ 11, "%|seq|sequence %d %P %m %m %4 %4 %d %d %|ipv4|ipv6 %|udp|tcp|icmp %d %d %d" },
+-	{ 12, "%|seq|sequence %d %P dst %m src %m dst %4 src %4 sport %d dport %d %|ipv4|ipv6 %|udp|tcp|icmp vlan %d size %d" },
+-	{ 13, "%|seq|sequence %d %P dst %m src %m dst %4 src %4 sport %d dport %d %|ipv4|ipv6 %|udp|tcp|icmp vlan %d size %d teid %d" },
++	{ 10, "%|seq|sequence %d %P %m %m %4 %4 %d %d %|ipv4|ipv6 %|udp|tcp|icmp %d %d %d %d" },
++	{ 11, "%|seq|sequence %d %P %m %m %4 %4 %d %d %|ipv4|ipv6 %|udp|tcp|icmp %d %d %d %d %d" },
++	{ 12, "%|seq|sequence %d %P dst %m src %m dst %4 src %4 sport %d dport %d %|ipv4|ipv6 %|udp|tcp|icmp vlan %d size %d cos %d tos %d" },
++	{ 13, "%|seq|sequence %d %P dst %m src %m dst %4 src %4 sport %d dport %d %|ipv4|ipv6 %|udp|tcp|icmp vlan %d size %d cos %d tos %d teid %d" },
+ 	{ -1, NULL }
+ };
+ 
+ static const char *seq_help[] = {
+-	"sequence <seq#> <portlist> dst <Mac> src <Mac> dst <IP> src <IP> sport <val> dport <val> ipv4|ipv6 udp|tcp|icmp vlan <val> pktsize <val> [teid <val>]",
+-	"sequence <seq#> <portlist> <dst-Mac> <src-Mac> <dst-IP> <src-IP> <sport> <dport> ipv4|ipv6 udp|tcp|icmp <vlanid> <pktsize> [<teid>]",
++	"sequence <seq#> <portlist> dst <Mac> src <Mac> dst <IP> src <IP> sport <val> dport <val> ipv4|ipv6 udp|tcp|icmp vlan <val> pktsize <val> cos <val> tos <val> [teid <val>]",
++	"sequence <seq#> <portlist> <dst-Mac> <src-Mac> <dst-IP> <src-IP> <sport> <dport> ipv4|ipv6 udp|tcp|icmp <vlanid> <pktsize> <cos> <tos> [<teid>]",
+ 	"                                   - Set the sequence packet information, make sure the src-IP",
+ 	"                                     has the netmask value eg 1.2.3.4/24",
+ 	"",
+
+--- pktgen-3.4.2/app/lpktgenlib.c
++++ pktgen-3.4.2/app/lpktgenlib.c
+@@ -285,6 +285,7 @@
+ 	portlist_t portlist;
+ 	uint32_t pktsize, sport, dport, gtpu_teid;
+ 	uint16_t vlanid;
++	uint8_t cos, tos;
+ 	struct ether_addr daddr;
+ 	struct ether_addr saddr;
+ 	struct pg_ipaddr ip_daddr;
+@@ -319,6 +320,9 @@
+ 		gtpu_teid = luaL_checkinteger(L, 13);
+ 	else
+ 		gtpu_teid = 0;
++	
++	cos  = luaL_checkinteger(L, 14);
++	tos  = luaL_checkinteger(L, 15);
+ 
+ 	if ( (proto[0] == 'i') && (ip[3] == '6') ) {
+ 		lua_putstring("Must use IPv4 with ICMP type packets\n");
+@@ -329,7 +333,7 @@
+ 	             pktgen_set_seq(info, seqnum, &daddr, &saddr, &ip_daddr,
+ 	                            &ip_saddr,
+ 	                            sport, dport, ip[3], proto[0], vlanid,
+-	                            pktsize, gtpu_teid) );
++	                            pktsize, gtpu_teid, cos, tos) );
+ 
+ 	pktgen_update_display();
+ 
+@@ -383,6 +387,7 @@
+ 	portlist_t portlist;
+ 	uint32_t pktSize, sport, dport, gtpu_teid;
+ 	uint16_t vlanid;
++	uint8_t cos, tos;
+ 	struct ether_addr daddr;
+ 	struct ether_addr saddr;
+ 	struct pg_ipaddr ip_daddr;
+@@ -403,6 +408,8 @@
+ 	ethType     = getf_string(L, "ethType");
+ 	vlanid      = getf_integer(L, "vlanid");
+ 	pktSize     = getf_integer(L, "pktSize");
++	cos         = getf_integer(L, "cos");
++	tos         = getf_integer(L, "tos");
+ 
+ 	lua_getfield(L, 3, "gtpu_teid");
+ 	if (lua_isinteger(L, -1))
+@@ -420,7 +427,7 @@
+ 	             pktgen_set_seq(info, seqnum, &daddr, &saddr, &ip_daddr,
+ 	                            &ip_saddr,
+ 	                            sport, dport, ethType[3], ipProto[0],
+-	                            vlanid, pktSize, gtpu_teid) );
++	                            vlanid, pktSize, gtpu_teid, cos, tos) );
+ 
+ 	pktgen_update_display();
+ 
+@@ -1628,6 +1635,73 @@
+ 
+ 	foreach_port(portlist,
+ 		     single_set_vlan_id(info, vlanid) );
++
++	pktgen_update_display();
++	return 0;
++}
++
++/**************************************************************************//**
++ *
++ * pktgen_cos - Set the 802.1p prio for a single port
++ *
++ * DESCRIPTION
++ * Set the 802.1p cos for a single port.
++ *
++ * RETURNS: N/A
++ *
++ * SEE ALSO:
++ */
++
++static int
++single_cos(lua_State *L) {
++	portlist_t portlist;
++	uint8_t cos;
++
++	switch (lua_gettop(L) ) {
++	default: return luaL_error(L, "cos, wrong number of arguments");
++	case 2:
++		break;
++	}
++	rte_parse_portlist(luaL_checkstring(L, 1), &portlist);
++	cos = luaL_checkinteger(L, 2);
++	if (cos > MAX_COS)
++		cos = 0;
++
++	foreach_port(portlist,
++	             single_set_cos(info, cos) );
++
++	pktgen_update_display();
++	return 0;
++}
++
++
++/**************************************************************************//**
++ *
++ * pktgen_tos - Set the TOS for a single port
++ *
++ * DESCRIPTION
++ * Set the TOS for a single port.
++ *
++ * RETURNS: N/A
++ *
++ * SEE ALSO:
++ */
++
++static int
++single_tos(lua_State *L) {
++	portlist_t portlist;
++	uint8_t tos;
++
++	switch (lua_gettop(L) ) {
++	default: return luaL_error(L, "tos, wrong number of arguments");
++	case 2:
++		break;
++	}
++	rte_parse_portlist(luaL_checkstring(L, 1), &portlist);
++	tos = luaL_checkinteger(L, 2);
++
++	foreach_port(portlist,
++	             single_set_tos(info, tos) );
+ 
+ 	pktgen_update_display();
+ 	return 0;
+@@ -2831,6 +2905,8 @@
+ 	setf_integer(L, "dport", p->dport);
+ 	setf_integer(L, "sport", p->sport);
+ 	setf_integer(L, "vlanid", p->vlanid);
++	setf_integer(L, "cos", p->cos);
++	setf_integer(L, "tos", p->tos);
+ 	setf_string(L,
+ 		    "ethType",
+ 		    (char *)(
+@@ -3271,6 +3347,10 @@
+ 	"minVlanID      - Min VLAN ID value\n",
+ 	"maxVlanID      - Max VLAN ID value\n",
+ 	"vlanTagSize    - VLAN Tag size\n",
++	"minCos       - Min 802.1p value\n",
++	"maxCos       - Max 802.1p value\n",
++	"minTOS       - Min TOS value\n",
++	"maxTOS       - Max TOS value\n",
+ 	"mbufCacheSize  - mbuf cache size value]n",
+ 	"\n",
+ 	"defaultPktBurst- Default burst packet count\n",
+@@ -3370,6 +3450,10 @@
+ 
+ 	{"vlan",          single_vlan},		/* Enable or disable VLAN header */
+ 	{"vlanid",        single_vlan_id},	/* Set the vlan ID for a given portlist */
++	
++	{"cos",           single_cos},		/* Set the prio for a given portlist */
++	{"tos",           single_tos},	/* Set the tos for a given portlist */
++
+ 
+ 	{"mpls",          pktgen_mpls},		/* Enable or disable MPLS header */
+ 	{"qinq",          pktgen_qinq},		/* Enable or disable Q-in-Q header */
+@@ -3483,6 +3567,11 @@
+ 	setf_integer(L, "vlanTagSize", VLAN_TAG_SIZE);
+ 	setf_integer(L, "mbufCacheSize", MBUF_CACHE_SIZE);
+ 
++	setf_integer(L, "minCos", MIN_COS);
++	setf_integer(L, "maxCos", MAX_COS);
++	setf_integer(L, "minTOS", MIN_TOS);
++	setf_integer(L, "maxTOS", MAX_TOS);
++
+ 	setf_integer(L, "defaultPktBurst", DEFAULT_PKT_BURST);
+ 	setf_integer(L, "defaultBuffSize", MBUF_SIZE);
+ 	setf_integer(L, "maxMbufsPerPort", MAX_MBUFS_PER_PORT);
+
+--- pktgen-3.4.2/app/pktgen-cmds.c
++++ pktgen-3.4.2/app/pktgen-cmds.c
+@@ -340,6 +340,19 @@
+ 		fprintf(fd, "range %d vlan min %d\n", i, range->vlan_id_min);
+ 		fprintf(fd, "range %d vlan max %d\n", i, range->vlan_id_max);
+ 		fprintf(fd, "range %d vlan inc %d\n", i, range->vlan_id_inc);
++
++		fprintf(fd, "\n");
++		fprintf(fd, "range %d cos start %d\n", i, range->cos);
++		fprintf(fd, "range %d cos min %d\n", i, range->cos_min);
++		fprintf(fd, "range %d cos max %d\n", i, range->cos_max);
++		fprintf(fd, "range %d cos inc %d\n", i, range->cos_inc);
++
++		fprintf(fd, "\n");
++		fprintf(fd, "range %d tos start %d\n", i, range->tos);
++		fprintf(fd, "range %d tos min %d\n", i, range->tos_min);
++		fprintf(fd, "range %d tos max %d\n", i, range->tos_max);
++		fprintf(fd, "range %d tos inc %d\n", i, range->tos_inc);
++
+ 
+ 		fprintf(fd, "\n");
+ 		fprintf(fd, "range %d size start %d\n", i,
+@@ -665,6 +678,19 @@
+ 		fprintf(fd, "pktgen.vlan_id('%d', 'min', %d);\n", i, range->vlan_id_min);
+ 		fprintf(fd, "pktgen.vlan_id('%d', 'max', %d);\n", i, range->vlan_id_max);
+ 		fprintf(fd, "pktgen.vlan_id('%d', 'inc', %d);\n", i, range->vlan_id_inc);
++
++		fprintf(fd, "\n");
++		fprintf(fd, "pktgen.cos('%d', 'start', %d);\n", i, range->cos);
++		fprintf(fd, "pktgen.cos('%d', 'min', %d);\n", i, range->cos_min);
++		fprintf(fd, "pktgen.cos('%d', 'max', %d);\n", i, range->cos_max);
++		fprintf(fd, "pktgen.cos('%d', 'inc', %d);\n", i, range->cos_inc);
++
++		fprintf(fd, "\n");
++		fprintf(fd, "pktgen.tos('%d', 'start', %d);\n", i, range->tos);
++		fprintf(fd, "pktgen.tos('%d', 'min', %d);\n", i, range->tos_min);
++		fprintf(fd, "pktgen.tos('%d', 'max', %d);\n", i, range->tos_max);
++		fprintf(fd, "pktgen.tos('%d', 'inc', %d);\n", i, range->tos_inc);
++
+ 
+ 		fprintf(fd, "\n");
+ 		fprintf(fd, "pktgen.pkt_size('%d', 'start', %d);\n", i,
+@@ -1794,6 +1820,54 @@
+ 	pktgen_packet_ctor(info, SINGLE_PKT, -1);
+ }
+ 
++
++
++/**************************************************************************//**
++ *
++ * single_set_prio - Set the port 802.1p cos value
++ *
++ * DESCRIPTION
++ * Set the given port list with the given 802.1p cos
++ *
++ * RETURNS: N/A
++ *
++ * SEE ALSO:
++ */
++
++void
++single_set_cos(port_info_t *info, uint8_t cos)
++{
++	info->cos = cos;
++	info->seq_pkt[SINGLE_PKT].cos = info->cos;
++	pktgen_packet_ctor(info, SINGLE_PKT, -1);
++}
++
++
++/**************************************************************************//**
++ *
++ * single_set_tos - Set the port tos value
++ *
++ * DESCRIPTION
++ * Set the given port list with the given tos
++ *
++ * RETURNS: N/A
++ *
++ * SEE ALSO:
++ */
++
++void
++single_set_tos(port_info_t *info, uint8_t tos)
++{
++	info->tos = tos;
++	info->seq_pkt[SINGLE_PKT].tos = info->tos;
++	pktgen_packet_ctor(info, SINGLE_PKT, -1);
++}
++
++
++
++
++
++
+ /**************************************************************************//**
+  *
+  * enable_mpls - Set the port to send a mpls ID
+@@ -2036,12 +2110,16 @@
+ 	pkt->ipProto            = PG_IPPROTO_TCP;
+ 	pkt->ethType            = ETHER_TYPE_IPv4;
+ 	pkt->vlanid             = DEFAULT_VLAN_ID;
++	pkt->cos            	= DEFAULT_COS;
++	pkt->tos            	= DEFAULT_TOS;
+ 
+ 	rte_atomic64_set(&info->transmit_count, DEFAULT_TX_COUNT);
+ 	rte_atomic64_init(&info->current_tx_count);
+ 	info->tx_rate           = DEFAULT_TX_RATE;
+ 	info->tx_burst          = DEFAULT_PKT_BURST;
+ 	info->vlanid            = DEFAULT_VLAN_ID;
++	info->cos            	= DEFAULT_COS;
++	info->tos            	= DEFAULT_TOS;
+ 	info->seqCnt            = 0;
+ 	info->seqIdx            = 0;
+ 	info->prime_cnt         = DEFAULT_PRIME_COUNT;
+@@ -2869,14 +2947,80 @@
+ 		if ( (id < MIN_VLAN_ID) || (id > MAX_VLAN_ID) )
+ 			id = MIN_VLAN_ID;
+ 
++	if (!strcmp(what, "min") || !strcmp(what, "minimum"))
++		info->range.vlan_id_min = id;
++	else if (!strcmp(what, "max") || !strcmp(what, "maximum"))
++		info->range.vlan_id_max = id;
++	else if (!strcmp(what, "start") )
++		info->range.vlan_id = id;
++	}
++}
++
++
++/**************************************************************************//**
++ *
++ * range_set_tos_id - Set the tos value
++ *
++ * DESCRIPTION
++ * Set the tos values.
++ *
++ * RETURNS: N/A
++ *
++ * SEE ALSO:
++ */
++
++void
++range_set_tos_id(port_info_t *info, char *what, uint8_t id)
++{
++	
++	if (!strcmp(what, "inc") || !strcmp(what, "increment")) {
++		// if (id > 255)
++		// 	id = 255;
++		info->range.tos_inc = id;
++	} else {
++		/*if ( (id < MIN_TOS) || (id > MAX_TOS) )*/
++		/*id = 160 MIN_TOS;*/
++	
+ 		if (!strcmp(what, "min") || !strcmp(what, "minimum"))
+-			info->range.vlan_id_min = id;
++			info->range.tos_min = id;
+ 		else if (!strcmp(what, "max") || !strcmp(what, "maximum"))
+-			info->range.vlan_id_max = id;
++			info->range.tos_max = id;
+ 		else if (!strcmp(what, "start") )
+-			info->range.vlan_id = id;
++			info->range.tos = id;
+ 	}
+ }
++
++/**************************************************************************//**
++ *
++ * range_set_cos_id - Set the prio (cos) value
++ *
++ * DESCRIPTION
++ * Set the prio (cos) values.
++ *
++ * RETURNS: N/A
++ *
++ * SEE ALSO:
++ */
++
++void
++range_set_cos_id(port_info_t *info, char *what, uint8_t id)
++{
++	if (!strcmp(what, "inc") || !strcmp(what, "increment")) {
++		if (id > 7)
++			id = 7;
++		info->range.cos_inc = id;
++	} else {
++		/*if ( (id < MIN_COS) || (id > MAX_COS) )
++		id = MIN_COS;*/
++	
++		if (!strcmp(what, "min") || !strcmp(what, "minimum"))
++			info->range.cos_min = id;
++		else if (!strcmp(what, "max") || !strcmp(what, "maximum"))
++			info->range.cos_max = id;
++		else if (!strcmp(what, "start") )
++			info->range.cos = id;
++	}
++ }
+ 
+ /**************************************************************************//**
+  *
+@@ -3045,7 +3189,7 @@
+ 	       struct ether_addr *daddr, struct ether_addr *saddr,
+ 	       struct pg_ipaddr *ip_daddr, struct pg_ipaddr *ip_saddr,
+ 	       uint32_t sport, uint32_t dport, char type, char proto,
+-	       uint16_t vlanid, uint32_t pktsize, uint32_t gtpu_teid)
++	       uint16_t vlanid, uint32_t pktsize, uint32_t gtpu_teid, uint8_t cos, uint8_t tos)
+ {
+ 	pkt_seq_t     *pkt;
+ 
+@@ -3077,6 +3221,8 @@
+ 	pkt->ethType        = (type == '6') ? ETHER_TYPE_IPv6 : ETHER_TYPE_IPv4;
+ 	pkt->vlanid         = vlanid;
+ 	pkt->gtpu_teid      = gtpu_teid;
++	pkt->cos            = cos;
++	pkt->tos            = tos;
+ 	pktgen_packet_ctor(info, seqnum, -1);
+ }
+ 
+@@ -3097,7 +3243,8 @@
+ 		   struct ether_addr *daddr, struct ether_addr *saddr,
+ 		   struct pg_ipaddr *ip_daddr, struct pg_ipaddr *ip_saddr,
+ 		   uint32_t sport, uint32_t dport, char type, char proto,
+-		   uint16_t vlanid, uint32_t pktsize, uint32_t gtpu_teid)
++		   uint16_t vlanid, uint32_t pktsize, uint32_t gtpu_teid,
++		   uint8_t cos, uint8_t tos)
+ {
+ 	pkt_seq_t     *pkt;
+ 
+@@ -3124,6 +3271,8 @@
+ 		(type == 'n') ? ETHER_TYPE_VLAN : ETHER_TYPE_IPv4;
+ 	pkt->vlanid         = vlanid;
+ 	pkt->gtpu_teid          = gtpu_teid;
++	pkt->cos        	= cos;
++	pkt->tos        	= tos;
+ 	pktgen_packet_ctor(info, seqnum, -1);
+ }
+ 
+--- pktgen-3.4.2/app/pktgen-cmds.h
++++ pktgen-3.4.2/app/pktgen-cmds.h
+@@ -97,6 +97,8 @@
+ void single_set_ipaddr(port_info_t *info, char type, struct pg_ipaddr *ip);
+ void single_set_proto(port_info_t *info, char *type);
+ void single_set_vlan_id(port_info_t *info, uint16_t vlanid);
++void single_set_cos(port_info_t *info, uint8_t cos);
++void single_set_tos(port_info_t *info, uint8_t tos);
+ void single_set_dst_mac(port_info_t *info, struct ether_addr *mac);
+ void single_set_src_mac(port_info_t *info, struct ether_addr *mac);
+ void single_set_pkt_type(port_info_t *info, const char *type);
+@@ -166,6 +168,8 @@
+ 				      uint16_t size);
+ void range_set_gtpu_teid(port_info_t *info, char *what, uint32_t teid);
+ void range_set_vlan_id(port_info_t *info, char *what, uint16_t id);
++void range_set_tos_id(port_info_t *info, char *what, uint8_t id);
++void range_set_cos_id(port_info_t *info, char *what, uint8_t id);
+ void range_set_mpls_entry(port_info_t *info, uint32_t mpls_entry);
+ void range_set_qinqids(port_info_t *info,
+ 			       uint16_t outerid,
+@@ -186,7 +190,10 @@
+ 			   char proto,
+ 			   uint16_t vlanid,
+ 			   uint32_t pktsize,
+-			   uint32_t gtpu_teid);
++			   uint32_t gtpu_teid,
++			   uint8_t cos,
++			   uint8_t tos
++			);
+ 
+ /* Packet */
+ void pktgen_send_pkt(port_info_t *info, uint32_t seqnum);
+@@ -202,9 +209,12 @@
+ 			       uint32_t dport,
+ 			       char type,
+ 			       char proto,
+-			       uint16_t vlanid,
++				   uint16_t vlanid,
+ 			       uint32_t pktsize,
+-			       uint32_t gtpu_teid);
++				   uint32_t gtpu_teid,
++				   uint8_t cos, 
++				   uint8_t tos
++				);
+ 
+ /* Pattern */
+ void pattern_set_type(port_info_t *info, char *str);
+
+--- pktgen-3.4.2/app/pktgen-ether.c
++++ pktgen-3.4.2/app/pktgen-ether.c
+@@ -53,7 +53,7 @@
+ pktgen_ether_hdr_ctor(port_info_t *info, pkt_seq_t *pkt, struct ether_hdr *eth)
+ {
+ 	uint32_t flags;
+-
++	uint16_t vlan_id;
+ 	/* src and dest addr */
+ 	ether_addr_copy(&pkt->eth_src_addr, &eth->s_addr);
+ 	ether_addr_copy(&pkt->eth_dst_addr, &eth->d_addr);
+@@ -65,7 +65,8 @@
+ 
+ 		/* only set the TCI field for now; don't bother with PCP/DEI */
+ 		struct vlan_hdr *vlan_hdr = (struct vlan_hdr *)(eth + 1);
+-		vlan_hdr->vlan_tci = htons(pkt->vlanid);
++		vlan_id = (pkt->vlanid | (pkt->cos << 13));
++		vlan_hdr->vlan_tci = htons(vlan_id);
+ 		vlan_hdr->eth_proto = htons(pkt->ethType);
+ 
+ 		/* adjust header size for VLAN tag */
+
+--- pktgen-3.4.2/app/pktgen-ipv4.c
++++ pktgen-3.4.2/app/pktgen-ipv4.c
+@@ -69,7 +69,7 @@
+ 
+ 	ip->tlen            = htons(tlen);
+ 	ip->ttl             = 4;
+-	ip->tos             = 0;
++	ip->tos             = pkt->tos;
+ 
+ 	pktgen.ident        += 27;	/* bump by a prime number */
+ 	ip->ident           = htons(pktgen.ident);
+
+--- pktgen-3.4.2/app/pktgen-port-cfg.h
++++ pktgen-3.4.2/app/pktgen-port-cfg.h
+@@ -181,6 +181,8 @@
+ 	uint16_t seqCnt;		/**< Current packet sequence max count */
+ 	uint16_t prime_cnt;		/**< Set the number of packets to send in a prime command */
+ 	uint16_t vlanid;		/**< Set the port VLAN ID value */
++	uint8_t cos;			/**< Set the port 802.1p cos value */
++	uint8_t tos;			/**< Set the port tos value */
+ 	rte_spinlock_t port_lock;	/**< Used to sync up packet constructor between cores */
+ 	pkt_seq_t *seq_pkt;		/**< Sequence of packets seq_pkt[NUM_SEQ_PKTS]=default packet */
+ 	range_info_t range;		/**< Range Information */
+
+--- pktgen-3.4.2/app/pktgen-range.c
++++ pktgen-3.4.2/app/pktgen-range.c
+@@ -135,6 +135,42 @@
+ 				pkt->vlanid = p;
+ 			} else
+ 				pkt->vlanid = range->vlan_id;
++			
++			if (unlikely(range->cos_inc != 0)) {
++				uint32_t p;
++				static uint8_t min_cos_set = 0;
++				if ((pkt->cos == MIN_COS) && !min_cos_set) {
++					p = 0;
++					min_cos_set = 1;
++				} else
++					p = pkt->cos;
++				p += range->cos_inc;
++				if (p < range->cos_min)
++					p = range->cos_max;
++				else if (p > range->cos_max)
++					p = range->cos_min;
++				pkt->cos = p;
++			} else
++				pkt->cos = range->cos;
++
++			if (unlikely(range->tos_inc != 0)) {
++				uint32_t p;
++				static uint8_t min_tos_set = 0;
++				if ((pkt->tos == MIN_TOS) && !min_tos_set) {
++					p = 0;
++					min_tos_set = 1;
++				} else
++					p = pkt->tos;
++				p += range->tos_inc;
++				if (p < range->tos_min)
++					p = range->tos_max;
++				else if (p > range->tos_max)
++					p = range->tos_min;
++				pkt->tos = p;
++			} else
++				pkt->tos = range->tos;
++	
++				
+ 
+ 			if (unlikely(range->pkt_size_inc != 0)) {
+ 				uint32_t p = pkt->pktSize;
+@@ -257,6 +293,14 @@
+ 	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "    min / max");
+ 
+ 	row++;
++	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "cos / inc");
++	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "    min / max");
++
++	row++;
++	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "tos / inc");
++	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "    min / max");
++
++	row++;
+ 	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "pkt.size / inc");
+ 	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "     min / max");
+ 
+@@ -380,6 +424,35 @@
+ 		         range->vlan_id_min,
+ 		         range->vlan_id_max);
+ 		scrn_printf(row++, col, "%*s", COLUMN_WIDTH_1, str);
++
++		row++;
++		snprintf(str,
++		         sizeof(str),
++		         "%d/%d",
++		         range->cos,
++		         range->cos_inc);
++		scrn_printf(row++, col, "%*s", COLUMN_WIDTH_1, str);
++		snprintf(str,
++		         sizeof(str),
++		         "%d/%d",
++		         range->cos_min,
++		         range->cos_max);
++		scrn_printf(row++, col, "%*s", COLUMN_WIDTH_1, str);
++
++		row++;
++		snprintf(str,
++		         sizeof(str),
++		         "%3d/%3d",
++		         range->tos,
++		         range->tos_inc);
++		scrn_printf(row++, col, "%*s", COLUMN_WIDTH_1, str);
++		snprintf(str,
++		         sizeof(str),
++		         "%3d/%3d",
++		         range->tos_min,
++		         range->tos_max);
++		scrn_printf(row++, col, "%*s", COLUMN_WIDTH_1, str);
++
+ 
+ 		row++;
+ 		snprintf(str,
+@@ -510,6 +583,16 @@
+ 	range->vlan_id_min  = MIN_VLAN_ID;
+ 	range->vlan_id_max  = MAX_VLAN_ID;
+ 
++	range->cos   	= info->cos;
++	range->cos_inc  = 0;
++	range->cos_min  = MIN_COS;
++	range->cos_max  = MAX_COS;
++	
++	range->tos   	= info->tos;
++	range->tos_inc  = 0;
++	range->tos_min  = MIN_TOS;
++	range->tos_max  = MAX_TOS;
++
+ 	range->pkt_size     = MIN_PKT_SIZE;
+ 	range->pkt_size_inc = 0;
+ 	range->pkt_size_min = MIN_PKT_SIZE;
+
+--- pktgen-3.4.2/app/pktgen-range.h
++++ pktgen-3.4.2/app/pktgen-range.h
+@@ -50,6 +50,8 @@
+ 	uint16_t src_port_inc;	/**< Source port increment */
+ 	uint16_t dst_port_inc;	/**< Destination port increment */
+ 	uint16_t vlan_id_inc;	/**< VLAN id increment */
++	uint16_t tos_inc;		/**< tos val increment */
++	uint16_t cos_inc;		/**< prio val increment */
+ 	uint16_t pkt_size_inc;	/**< PKT size increment */
+ 	uint64_t src_mac_inc;	/**< Source MAC increment */
+ 	uint64_t dst_mac_inc;	/**< Destination MAC increment */
+@@ -75,6 +77,14 @@
+ 	uint16_t vlan_id;	/**< VLAN id starting */
+ 	uint16_t vlan_id_min;	/**< VLAN id minimum */
+ 	uint16_t vlan_id_max;	/**< VLAN id maximum */
++
++	uint8_t cos;		/**< prio val starting */
++	uint8_t cos_min;	/**< prio val minimum */
++	uint8_t cos_max;	/**< prio val maximum */
++	
++	uint8_t tos;		/**< tos val starting */
++	uint8_t tos_min;	/**< tos val minimum */
++	uint8_t tos_max;	/**< tos val maximum */
+ 
+ 	uint16_t pkt_size;	/**< PKT Size starting */
+ 	uint16_t pkt_size_min;	/**< PKT Size minimum */
+
+--- pktgen-3.4.2/app/pktgen-seq.c
++++ pktgen-3.4.2/app/pktgen-seq.c
+@@ -73,14 +73,16 @@
+ 	               pid, info->seqCnt, NUM_SEQ_PKTS);
+     scrn_fgcolor(SCRN_BLUE, SCRN_BOLD);
+     scrn_printf(row++, col + 111, "GTPu");
+-	scrn_printf(row++, col, "%*s %*s%*s%*s%*s%*s%*s%*s%*s",
++	scrn_printf(row++, col, "%*s %*s%*s%*s%*s%*s%*s%*s%*s%*s%*s",
+ 	               6, "Seq:",
+ 	               18, "Dst MAC",
+ 	               18, "Src MAC",
+ 	               16, "Dst IP",
+ 	               18, "Src IP",
+ 	               12, "Port S/D",
+-	               14, "Protocol:VLAN",
++				   14, "Protocol:VLAN",
++				   4,  "CoS",
++				   4,  "ToS",
+ 	               6, "Size",
+ 	               6, "TEID");
+     scrn_fgcolor(SCRN_DEFAULT_FG, SCRN_NO_ATTR);
+@@ -131,6 +133,12 @@
+ 		scrn_printf(row, col, "%*s", 14, buff);
+ 		col += 14;
+ 
++		scrn_printf(row, col, "%3d", pkt->cos);
++		col += 4;
++
++		scrn_printf(row, col, "%3d", pkt->tos);
++		col += 4;
++
+ 		scrn_printf(row, col, "%5d", pkt->pktSize + FCS_SIZE);
+ 		col += 6;
+ 
+--- pktgen-3.4.2/app/pktgen-seq.h
++++ pktgen-3.4.2/app/pktgen-seq.h
+@@ -64,6 +64,8 @@
+ 	uint16_t ethType;	/**< IPv4 or IPv6 */
+ 	uint16_t ipProto;	/**< TCP or UDP or ICMP */
+ 	uint16_t vlanid;	/**< VLAN ID value if used */
++	uint8_t cos;		/**< 802.1p cos value if used */
++	uint8_t tos;		/**< tos value if used */
+ 	uint16_t ether_hdr_size;/**< Size of Ethernet header in packet for VLAN ID */
+ 
+ 	uint32_t mpls_entry;	/**< MPLS entry if used */
+
+--- pktgen-3.4.2/app/pktgen-stats.c
++++ pktgen-3.4.2/app/pktgen-stats.c
+@@ -119,6 +119,10 @@
+ 	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "PktSize/Tx Burst");
+ 	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "Src/Dest Port");
+ 	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "Pkt Type:VLAN ID");
++	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "802.1p CoS");
++	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "ToS Value:");
++	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "  - DSCP value");
++	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "  - IPP  value");
+ 	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "Dst  IP Address");
+ 	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "Src  IP Address");
+ 	scrn_printf(row++, 1, "%-*s", COLUMN_WIDTH_0, "Dst MAC Address");
+@@ -132,7 +136,7 @@
+ 
+ 	/* Display the colon after the row label. */
+ 	pktgen_display_set_color("stats.colon");
+-	for (row = PORT_STATE_ROW; row < ((ip_row + IP_ADDR_ROWS) - 2); row++)
++	for (row = PORT_STATE_ROW; row < ((ip_row + IP_ADDR_ROWS+4) - 2); row++)
+ 		scrn_printf(row, COLUMN_WIDTH_0 - 1, ":");
+ 
+ 	pktgen_display_set_color("stats.stat.values");
+@@ -170,7 +174,19 @@
+ 		         (pkt->ipProto == PG_IPPROTO_ICMP) ? "ICMP" : "UDP",
+ 		         pkt->vlanid);
+ 		scrn_printf(row++, col, "%*s", COLUMN_WIDTH_1, buff);
+-
++		
++		snprintf(buff, sizeof(buff), "%d",  (pkt->cos));		
++		scrn_printf(row++, col, "%*s", COLUMN_WIDTH_1, buff);
++
++		snprintf(buff, sizeof(buff), "%d",  pkt->tos);
++		scrn_printf(row++, col, "%*s", COLUMN_WIDTH_1, buff);
++
++		snprintf(buff, sizeof(buff), "%d",  (pkt->tos >> 2));
++		scrn_printf(row++, col, "%*s", COLUMN_WIDTH_1, buff);
++
++		snprintf(buff, sizeof(buff), "%d",  (pkt->tos >> 5));
++		scrn_printf(row++, col, "%*s", COLUMN_WIDTH_1, buff);
++		
+ 		scrn_printf(row++, col, "%*s", COLUMN_WIDTH_1,
+ 					inet_ntop4(buff, sizeof(buff),
+ 					htonl(pkt->ip_dst_addr.addr.ipv4.s_addr), 0xFFFFFFFF));
+
+--- pktgen-3.4.2/app/pktgen.h
++++ pktgen-3.4.2/app/pktgen.h
+@@ -220,6 +220,12 @@
+ 	MIN_VLAN_ID             = 1,
+ 	MAX_VLAN_ID             = 4095,
+ 	DEFAULT_VLAN_ID         = MIN_VLAN_ID,
++	MIN_COS             	= 0,
++	MAX_COS 	            = 7,
++	DEFAULT_COS	         	= MIN_COS,
++	MIN_TOS             	= 0,
++	MAX_TOS 	            = 255,
++	DEFAULT_TOS		        = MIN_TOS,
+ 	MAX_ETHER_TYPE_SIZE     = 0x600,
+ 	OVERHEAD_FUDGE_VALUE    = 50,
+ 
